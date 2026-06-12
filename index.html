@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>사계절 무스펠 신호등 연습기</title>
+  <meta name="description" content="AION2 성역3 무스펠의 성배 신호등 기믹을 연습하는 사계절용 Canvas 시뮬레이터" />
+  <script type="module" crossorigin src="./assets/index-Cr62eFpX.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DX5BkNPQ.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">四</span>
+        <div>
+          <strong>사계절 무스펠 신호등 연습기</strong>
+          <small>Space 시작 · R 재시작 · P 일시정지 · WASD/방향키 이동 · Shift 대시</small>
+        </div>
+      </div>
+      <div class="status-pill" id="statusPill">대기 중</div>
+    </header>
+
+    <main class="layout">
+      <section class="stage-card">
+        <canvas id="game" width="1280" height="820" aria-label="무스펠 신호등 연습 캔버스"></canvas>
+        <div class="overlay-help" id="overlayHelp">
+          <b>Space</b>로 시작하세요<br />
+          구슬 색을 목표색에 맞추고, 빨간 직선 장판으로 구슬 색을 돌립니다.
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <section>
+          <h2>연습 설정</h2>
+          <label class="control-row">
+            <span>패턴</span>
+            <select id="patternMode">
+              <option value="random">랜덤</option>
+              <option value="one">1줄</option>
+              <option value="two">2줄</option>
+            </select>
+          </label>
+          <label class="control-row">
+            <span>난이도</span>
+            <select id="difficulty">
+              <option value="easy">쉬움</option>
+              <option value="normal" selected>보통</option>
+              <option value="hard">어려움</option>
+            </select>
+          </label>
+          <label class="control-row">
+            <span>카메라</span>
+            <input id="cameraTilt" type="range" min="0" max="100" value="58" />
+          </label>
+          <label class="check-row"><input id="showGuide" type="checkbox" checked /> 미니맵 목표 표시</label>
+          <label class="check-row"><input id="soundToggle" type="checkbox" /> 효과음 켜기</label>
+        </section>
+
+        <section class="score-grid">
+          <div><span>성공</span><b id="successCount">0</b></div>
+          <div><span>실패</span><b id="failCount">0</b></div>
+          <div><span>화상</span><b id="burnCount">0</b></div>
+          <div><span>대시</span><b id="dashState">READY</b></div>
+        </section>
+
+        <section>
+          <h2>실전 콜</h2>
+          <ul class="tips">
+            <li>3번째·5번째 빨장 직후에는 <b>뒤 구슬</b>을 먼저 봅니다.</li>
+            <li>1·5·7·11시는 2줄 강화 자리로 연습합니다.</li>
+            <li>화상 2스택쯤 상급 치유 물약 타이밍이라고 생각하세요.</li>
+            <li>목표색: <span class="dot red"></span>빨 → <span class="dot green"></span>초 → <span class="dot blue"></span>파 순환</li>
+          </ul>
+        </section>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>
