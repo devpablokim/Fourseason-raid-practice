@@ -26,6 +26,7 @@ const state = {
   blastNo: 0, nextBlastAt: 0, patternText: '대기', resultChecked: false,
   player: { x: 0, y: 0, vx: 0, vy: 0, r: 15, dash: 0, dashCd: 0, invuln: 0 }
 };
+window.__fourseasonRaidPractice = { state };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -52,9 +53,9 @@ new ResizeObserver(resize).observe(canvas); resize();
 
 function difficulty() {
   return {
-    easy: { blastGap: 3.0, beamLife: .42, beamWidth: .105, speed: 190 },
-    normal: { blastGap: 2.45, beamLife: .32, beamWidth: .085, speed: 215 },
-    hard: { blastGap: 2.05, beamLife: .25, beamWidth: .07, speed: 235 }
+    easy: { blastGap: 3.0, beamLife: .42, beamWidth: .30, speed: 190 },
+    normal: { blastGap: 2.45, beamLife: .32, beamWidth: .26, speed: 215 },
+    hard: { blastGap: 2.05, beamLife: .25, beamWidth: .22, speed: 235 }
   }[ui.difficulty.value];
 }
 function chooseAssignment() {
@@ -91,19 +92,43 @@ function randomPlan(laneCount) {
   return laneCount === 2 ? [0, 1, PLAN_BOTH, -1, PLAN_BOTH, 0, PLAN_BOTH] : [0, -1, 0, -1, 0, -1, 0];
 }
 function makeLanes(assignment, plan) {
+  // 참고사이트 구조에 맞춰 12방향 줄을 모두 만들고, 각 줄마다 3개 구슬이 바깥에서 중앙 원으로 접근합니다.
   const targets = [randOf(COLORS), randOf(COLORS), randOf(COLORS)];
   state.targets = targets;
-  return assignment.hours.map((hour, laneIndex) => {
-    const hits = planHitsLane(plan, laneIndex) % 3;
+  const assignedHours = new Set(assignment.hours);
+  return Array.from({ length: 12 }, (_, i) => {
+    const hour = i + 1;
+    const laneIndex = assignment.hours.indexOf(hour);
+    const isAssigned = assignedHours.has(hour);
+    const plannedHits = isAssigned ? planHitsLane(plan, laneIndex) % 3 : 0;
     const orbs = targets.map((target, slot) => ({
       slot,
       target,
-      color: prevColor(target, hits),
+      color: isAssigned ? prevColor(target, plannedHits) : COLORS[(COLORS.indexOf(target) + 1 + ((hour + slot) % 2)) % 3],
       pulse: Math.random() * TAU,
-      hitFlash: 0
+      hitFlash: 0,
+      dist: 999,
+      entered: false,
+      resolved: false
     }));
-    return { hour, laneIndex, angle: hourAngle(hour), hits: 0, plannedHits: hits, orbs };
+    return { hour, laneIndex, isAssigned, angle: hourAngle(hour), hits: 0, plannedHits, orbs };
   });
+}
+function resetOrbDistances() {
+  // 원본 타이밍: 3/5/7번째 빨간 줄 타이밍에 1/2/3번째 구슬 묶음이 중앙 원에 도착하는 느낌.
+  const diff = difficulty();
+  const end = state.innerR + 20;
+  const arrival = [3, 5, 7].map(n => 1.1 + (n - 1) * diff.blastGap + .15);
+  const spawnOuter = state.arenaR + 125;
+  const speed = (spawnOuter - end) / arrival[2];
+  state.orbSpeed = speed;
+  for (const lane of state.lanes) {
+    for (const orb of lane.orbs) {
+      orb.dist = end + speed * arrival[orb.slot];
+      orb.entered = false;
+      orb.resolved = false;
+    }
+  }
 }
 function resetPlayer() {
   const p = pointForHour(6, state.arenaR - 32);
@@ -113,7 +138,7 @@ function start() {
   state.mode = 'play'; state.elapsed = 0; state.wave++; state.assignment = chooseAssignment(); state.plan = randomPlan(state.assignment.hours.length);
   state.lanes = makeLanes(state.assignment, state.plan); state.blastNo = 0; state.nextBlastAt = 1.1; state.blasts = []; state.feedback = []; state.laneFlash.clear();
   state.patternText = `${state.assignment.label} · 목표 ${state.targets.map(c => COLOR[c].ko).join('→')}`; state.resultChecked = false; state.burn = 0; ui.burn.textContent = '0';
-  resetPlayer(); ui.status.textContent = state.patternText; ui.help.style.display = 'none'; beep(620, .08, .045);
+  resetPlayer(); resetOrbDistances(); ui.status.textContent = state.patternText; ui.help.style.display = 'none'; beep(620, .08, .045);
 }
 function pauseToggle() {
   if (state.mode === 'play') { state.mode = 'pause'; ui.status.textContent = '일시정지'; ui.help.innerHTML = '<b>일시정지</b><br>P로 재개'; ui.help.style.display = 'block'; }
@@ -145,8 +170,9 @@ function fireBlast() {
   for (const lane of lanes) {
     lane.hits++;
     state.laneFlash.set(lane.hour, .65);
-    // 핵심 수정: 빨간 줄이 닿은 “줄”의 구슬 3개가 동시에 RGB 순서로 전환됩니다.
+    // 참고사이트 핵심: 빨간 줄이 닿은 줄의 3개 구슬이 줄 단위로 동시에 RGB 순환합니다.
     for (const orb of lane.orbs) {
+      if (orb.resolved) continue;
       orb.color = nextColor(orb.color);
       orb.hitFlash = .75;
     }
@@ -158,7 +184,7 @@ function fireBlast() {
 function evaluate() {
   state.resultChecked = true;
   const wrong = [];
-  for (const lane of state.lanes) {
+  for (const lane of state.lanes.filter(l => l.isAssigned)) {
     for (const orb of lane.orbs) if (orb.color !== orb.target) wrong.push({ lane, orb });
   }
   if (wrong.length) {
@@ -171,8 +197,6 @@ function update(dt) {
   state.elapsed += dt; state.tilt = Number(ui.tilt.value) / 100;
   const diff = difficulty();
   if (state.elapsed >= state.nextBlastAt && state.blastNo < 7) { fireBlast(); state.nextBlastAt += diff.blastGap; }
-  if (state.blastNo >= 7 && !state.resultChecked && state.elapsed > state.nextBlastAt - diff.blastGap + .8) evaluate();
-
   const p = state.player;
   let ax = 0, ay = 0;
   if (keys.has('KeyW') || keys.has('ArrowUp')) ay -= 1;
@@ -193,6 +217,25 @@ function update(dt) {
   state.blasts = state.blasts.filter(b => b.t < b.life);
   for (const l of state.lanes) for (const o of l.orbs) { o.pulse += dt * 4; o.hitFlash = Math.max(0, o.hitFlash - dt); }
   for (const [h, t] of state.laneFlash) { const n = t - dt; n <= 0 ? state.laneFlash.delete(h) : state.laneFlash.set(h, n); }
+  for (const lane of state.lanes) {
+    for (const orb of lane.orbs) {
+      if (orb.entered || orb.resolved) continue;
+      orb.dist -= state.orbSpeed * dt;
+      if (!lane.isAssigned && orb.dist <= state.innerR + 54) {
+        // 비담당 줄은 원본처럼 연습 시야용으로 목표색에 자동 정렬되어 흐름만 보여줍니다.
+        orb.color = orb.target;
+      }
+      if (orb.dist <= state.innerR + 20) {
+        orb.dist = state.innerR + 20;
+        orb.entered = true;
+        if (lane.isAssigned && orb.color !== orb.target) {
+          state.resultChecked = true;
+          return fail(`${lane.hour}시 ${orb.slot + 1}번 구슬 불일치`);
+        }
+      }
+    }
+  }
+  if (!state.resultChecked && state.lanes.filter(l => l.isAssigned).every(l => l.orbs.every(o => o.entered))) return success();
   state.feedback = state.feedback.map(f => ({ ...f, t: f.t - dt, y: f.y - 16 * dt })).filter(f => f.t > 0);
 
   for (const b of state.blasts) {
@@ -249,7 +292,7 @@ function draw() {
   const sprites = [];
   for (const lane of state.lanes) {
     lane.orbs.forEach((orb, i) => {
-      const radius = state.innerR + state.arenaR * (.28 + i * .145);
+      const radius = orb.dist;
       const p = project(Math.cos(lane.angle) * radius, Math.sin(lane.angle) * radius, 20);
       sprites.push({ y: p.y, draw: () => {
         const r = 19 + Math.sin(orb.pulse) * 1.2 + orb.hitFlash * 8;
@@ -266,7 +309,7 @@ function draw() {
 
   ctx.font = '700 15px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (let hour = 1; hour <= 12; hour++) { const p = project(...Object.values(pointForHour(hour, state.arenaR + 28)), 0); ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fillText(`${hour}시`, p.x, p.y); }
-  for (const lane of state.lanes) { const p = project(...Object.values(pointForHour(lane.hour, state.arenaR + 66)), 0); ctx.fillStyle = '#ffe05d'; ctx.font = '900 15px system-ui'; ctx.fillText(`${lane.hour}시 · ${lane.hits}회`, p.x, p.y); }
+  for (const lane of state.lanes.filter(l => l.isAssigned)) { const p = project(...Object.values(pointForHour(lane.hour, state.arenaR + 66)), 0); ctx.fillStyle = '#ffe05d'; ctx.font = '900 15px system-ui'; ctx.fillText(`${lane.hour}시 · ${lane.hits}회`, p.x, p.y); }
 
   for (const fb of state.feedback) { const p = project(fb.x, fb.y, 35); ctx.globalAlpha = clamp(fb.t / fb.life, 0, 1); ctx.fillStyle = 'rgba(0,0,0,.62)'; ctx.beginPath(); ctx.roundRect(p.x - 92, p.y - 20, 184, 34, 12); ctx.fill(); ctx.fillStyle = fb.color; ctx.font = '900 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(fb.text, p.x, p.y + 2); ctx.globalAlpha = 1; }
 
